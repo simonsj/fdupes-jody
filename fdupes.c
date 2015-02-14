@@ -831,21 +831,31 @@ void hardlinkfiles(file_t *files, int debug)
 
       /* preserve only the first file */
 
-      printf("   [+] %s\n", dupelist[1]->d_name);
+      if (!ISFLAG(flags, F_HIDEPROGRESS)) {
+        printf("   [+] %s\n", dupelist[1]->d_name);
+      }
       for (x = 2; x <= counter; x++) {
           if (unlink(dupelist[x]->d_name) == 0) {
             if ( link(dupelist[1]->d_name, dupelist[x]->d_name) == 0 ) {
+              if (!ISFLAG(flags, F_HIDEPROGRESS)) {
                 printf("   [h] %s\n", dupelist[x]->d_name);
+              }
             } else {
+              if (!ISFLAG(flags, F_HIDEPROGRESS)) {
                 printf("-- unable to create a hardlink for the file: %s\n", strerror(errno));
                 printf("   [!] %s ", dupelist[x]->d_name);
+              }
             }
           } else {
-            printf("   [!] %s ", dupelist[x]->d_name);
-            printf("-- unable to delete the file!\n");
+              if (!ISFLAG(flags, F_HIDEPROGRESS)) {
+                printf("   [!] %s ", dupelist[x]->d_name);
+                printf("-- unable to delete the file!\n");
+              }
           }
         }
-      printf("\n");
+      if (!ISFLAG(flags, F_HIDEPROGRESS)) {
+        printf("\n");
+      }
     }
 
     files = files->next;
