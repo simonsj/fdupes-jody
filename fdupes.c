@@ -34,7 +34,12 @@
 #include <string.h>
 #include <errno.h>
 #include <libgen.h>
-#include "jody_hash.h"
+
+/* jody_hash.h */
+typedef uint64_t hash_t;
+#define JODY_HASH_SHIFT 11
+hash_t jody_block_hash(const hash_t * restrict data,
+                       const hash_t start_hash, const unsigned int count);
 
 /* Detect Windows and modify as needed */
 #if defined _WIN32 || defined __CYGWIN__
@@ -71,6 +76,7 @@
 #define F_SUMMARIZEMATCHES  0x0800
 #define F_EXCLUDEHIDDEN     0x1000
 #define F_PERMISSIONS       0x2000
+#define F_HARDLINKFILES     0x4000
 
 typedef enum {
   ORDER_TIME = 0,
@@ -586,15 +592,15 @@ static void summarizematches(file_t *files)
   }
 
   if (numsets == 0)
-    printf("No duplicates found.\n\n");
+    printf("No duplicates found.\n");
   else
   {
     if (numbytes < 1024.0)
-      printf("%d duplicate files (in %d sets), occupying %.0f bytes.\n\n", numfiles, numsets, numbytes);
+      printf("%d duplicate files (in %d sets), occupying %.0f bytes.\n", numfiles, numsets, numbytes);
     else if (numbytes <= (1000.0 * 1000.0))
-      printf("%d duplicate files (in %d sets), occupying %.1f kilobytes\n\n", numfiles, numsets, numbytes / 1000.0);
+      printf("%d duplicate files (in %d sets), occupying %.1f kilobytes\n", numfiles, numsets, numbytes / 1000.0);
     else
-      printf("%d duplicate files (in %d sets), occupying %.1f megabytes\n\n", numfiles, numsets, numbytes / (1000.0 * 1000.0));
+      printf("%d duplicate files (in %d sets), occupying %.1f megabytes\n", numfiles, numsets, numbytes / (1000.0 * 1000.0));
 
   }
 }
@@ -728,9 +734,9 @@ static void deletefiles(file_t *files, int prompt, FILE *tty)
 	}
 
 	for (x = 1; x <= counter; x++) preserve[x] = 0;
-	
+
 	token = strtok(preservestr, " ,\n");
-	
+
 	while (token != NULL) {
 	  if (strncasecmp(token, "all", 4) == 0)
 	    for (x = 0; x <= counter; x++) preserve[x] = 1;
@@ -769,6 +775,100 @@ static void deletefiles(file_t *files, int prompt, FILE *tty)
   free(preserve);
   free(preservestr);
 }
+
+#ifndef ON_WINDOWS
+void hardlinkfiles(file_t *files, int debug)
+{
+  int counter;
+  int groups = 0;
+  int curgroup = 0;
+  file_t *tmpfile;
+  file_t *curfile;
+  file_t **dupelist;
+  int max = 0;
+  int x = 0;
+
+  curfile = files;
+
+  while (curfile) {
+    if (curfile->hasdupes) {
+      counter = 1;
+      groups++;
+
+      tmpfile = curfile->duplicates;
+      while (tmpfile) {
+        counter++;
+        tmpfile = tmpfile->duplicates;
+      }
+
+      if (counter > max) max = counter;
+    }
+
+    curfile = curfile->next;
+  }
+
+  max++;
+
+  dupelist = (file_t**) malloc(sizeof(file_t*) * max);
+
+  if (!dupelist) {
+    errormsg("out of memory\n");
+    exit(1);
+  }
+
+  while (files) {
+    if (files->hasdupes) {
+      curgroup++;
+      counter = 1;
+      dupelist[counter] = files;
+
+      if (debug) printf("[%d] %s\n", counter, files->d_name);
+
+      tmpfile = files->duplicates;
+
+      while (tmpfile) {
+        dupelist[++counter] = tmpfile;
+        if (debug) printf("[%d] %s\n", counter, tmpfile->d_name);
+        tmpfile = tmpfile->duplicates;
+      }
+
+      if (debug) printf("\n");
+
+      /* preserve only the first file */
+
+      if (!ISFLAG(flags, F_HIDEPROGRESS)) {
+        printf("   [+] %s\n", dupelist[1]->d_name);
+      }
+      for (x = 2; x <= counter; x++) {
+          if (unlink(dupelist[x]->d_name) == 0) {
+            if ( link(dupelist[1]->d_name, dupelist[x]->d_name) == 0 ) {
+              if (!ISFLAG(flags, F_HIDEPROGRESS)) {
+                printf("   [h] %s\n", dupelist[x]->d_name);
+              }
+            } else {
+              if (!ISFLAG(flags, F_HIDEPROGRESS)) {
+                printf("-- unable to create a hardlink for the file: %s\n", strerror(errno));
+                printf("   [!] %s ", dupelist[x]->d_name);
+              }
+            }
+          } else {
+              if (!ISFLAG(flags, F_HIDEPROGRESS)) {
+                printf("   [!] %s ", dupelist[x]->d_name);
+                printf("-- unable to delete the file!\n");
+              }
+          }
+        }
+      if (!ISFLAG(flags, F_HIDEPROGRESS)) {
+        printf("\n");
+      }
+    }
+
+    files = files->next;
+  }
+
+  free(dupelist);
+}
+#endif
 
 static inline int sort_pairs_by_arrival(file_t *f1, file_t *f2)
 {
@@ -856,6 +956,10 @@ static void help_text()
   printf("                  \tparticular directory more than once; refer to the\n");
   printf("                  \tfdupes documentation for additional information\n");
   /*printf(" -l --relink      \t(description)\n");*/
+#ifndef ON_WINDOWS
+  printf(" -L --linkhard    \thardlink duplicate files to the first file in\n");
+  printf("                  \teach set of duplicates without prompting the user\n");
+#endif
   printf(" -N --noprompt    \ttogether with --delete, preserve the first file in\n");
   printf("                  \teach set of duplicates and delete the rest without\n");
   printf("                  \tprompting the user\n");
@@ -904,6 +1008,9 @@ int main(int argc, char **argv) {
     { "hardlinks", 0, 0, 'H' },
 #endif
     { "relink", 0, 0, 'l' },
+#ifndef ON_WINDOWS
+    { "linkhard", 0, 0, 'L' },
+#endif
     { "noempty", 0, 0, 'n' },
     { "nohidden", 0, 0, 'A' },
     { "delete", 0, 0, 'd' },
@@ -925,7 +1032,7 @@ int main(int argc, char **argv) {
 
   oldargv = cloneargs(argc, argv);
 
-  while ((opt = GETOPT(argc, argv, "frRq1SsHlndvhNmpo:"
+  while ((opt = GETOPT(argc, argv, "frRq1SsHlLndvhNmpo:"
 #ifndef OMIT_GETOPT_LONG
           , long_options, NULL
 #endif
@@ -968,6 +1075,11 @@ int main(int argc, char **argv) {
     case 'd':
       SETFLAG(flags, F_DELETEFILES);
       break;
+#ifndef ON_WINDOWS
+    case 'L':
+      SETFLAG(flags, F_HARDLINKFILES);
+      break;
+#endif
     case 'v':
       printf("fdupes %s\n", VERSION);
       exit(0);
@@ -1012,6 +1124,16 @@ int main(int argc, char **argv) {
 
   if (ISFLAG(flags, F_SUMMARIZEMATCHES) && ISFLAG(flags, F_DELETEFILES)) {
     errormsg("options --summarize and --delete are not compatible\n");
+    exit(1);
+  }
+
+  if (ISFLAG(flags, F_HARDLINKFILES) && ISFLAG(flags, F_DELETEFILES)) {
+    errormsg("options --linkhard and --delete are not compatible\n");
+    exit(1);
+  }
+
+  if (ISFLAG(flags, F_HARDLINKFILES) && ISFLAG(flags, F_CONSIDERHARDLINKS)) {
+    errormsg("options --linkhard and --hardlinks are not compatible\n");
     exit(1);
   }
 
@@ -1093,6 +1215,9 @@ int main(int argc, char **argv) {
   if (ISFLAG(flags, F_DELETEFILES)) {
     if (ISFLAG(flags, F_NOPROMPT)) deletefiles(files, 0, 0);
     else deletefiles(files, 1, stdin);
+  } else if (ISFLAG(flags, F_HARDLINKFILES)) {
+    if (ISFLAG(flags, F_SUMMARIZEMATCHES)) summarizematches(files);
+    hardlinkfiles(files, 0);
   } else {
     if (ISFLAG(flags, F_SUMMARIZEMATCHES)) summarizematches(files);
     else printmatches(files);
@@ -1114,4 +1239,94 @@ int main(int argc, char **argv) {
   purgetree(checktree);
 
   return 0;
+}
+
+/* jody_hash.c */
+
+/* Jody Bruchon's fast hashing function
+ *
+ * This function was written to generate a fast hash that also has a
+ * fairly low collision rate. The collision rate is much higher than
+ * a secure hash algorithm, but the calculation is drastically simpler
+ * and faster.
+ *
+ * Copyright (C) 2014-2015 by Jody Bruchon <jody@jodybruchon.com>
+ * Released under the terms of the GNU GPL version 2
+ *
+ * 2015-01-03: Re-licensed under the fdupes license as detailed in the
+ * README file. Though no longer required, I would still request that
+ * anyone who improves this code send me patches! Thanks. -Jody
+ */
+
+/* Hash a block of arbitrary size; must be divisible by sizeof(hash_t)
+ * The first block should pass a start_hash of zero.
+ * All blocks after the first should pass start_hash as the value
+ * returned by the last call to this function. This allows hashing
+ * of any amount of data. If data is not divisible by the size of
+ * hash_t, it is MANDATORY that the caller provide a data buffer
+ * which is divisible by sizeof(hash_t). */
+hash_t jody_block_hash(const hash_t * restrict data,
+		const hash_t start_hash, const unsigned int count)
+{
+	register hash_t hash = start_hash;
+	unsigned int len;
+	hash_t tail;
+
+#ifdef ARCH_HAS_LITTLE_ENDIAN
+	/* Little-endian 64-bit hash_t tail mask */
+	const hash_t le64_tail_mask[] = {
+		0x0000000000000000,
+		0xff00000000000000,
+		0xffff000000000000,
+		0xffffff0000000000,
+		0xffffffff00000000,
+		0xffffffffff000000,
+		0xffffffffffff0000,
+		0xffffffffffffff00,
+		0xffffffffffffffff,
+	};
+ #define TAIL_MASK le64_tail_mask
+#else
+	/* Big-endian 64-bit hash_t tail mask */
+	const hash_t be64_tail_mask[] = {
+		0x0000000000000000,
+		0x00000000000000ff,
+		0x000000000000ffff,
+		0x0000000000ffffff,
+		0x00000000ffffffff,
+		0x000000ffffffffff,
+		0x0000ffffffffffff,
+		0x00ffffffffffffff,
+		0xffffffffffffffff,
+	};
+ #define TAIL_MASK be64_tail_mask
+#endif	/* ARCH_HAS_LITTLE_ENDIAN */
+
+	len = count / sizeof(hash_t);
+	for (; len > 0; len--) {
+		hash += *data;
+		hash = (hash << JODY_HASH_SHIFT) | hash >> (sizeof(hash_t) * 8 - JODY_HASH_SHIFT);
+		hash += (*data & (hash_t)0x000000ff);
+		hash ^= (*data);
+		hash += (*data & (hash_t)0xffffff00);
+		hash = (hash << JODY_HASH_SHIFT) | hash >> (sizeof(hash_t) * 8 - JODY_HASH_SHIFT);
+		hash += *data;
+		data++;
+	}
+
+	/* Handle data tail (for blocks indivisible by sizeof(hash_t)) */
+	len = count & (sizeof(hash_t) - 1);
+	if (len) {
+		tail = *data;
+		tail &= TAIL_MASK[len];
+		hash += tail;
+		hash = (hash << JODY_HASH_SHIFT) | hash >> (sizeof(hash_t) * 8 - JODY_HASH_SHIFT);
+		hash += (tail & (hash_t)0x000000ff);
+		hash ^= (tail);
+		hash += (tail & (hash_t)0xffffff00);
+		hash = (hash << JODY_HASH_SHIFT) | hash >> (sizeof(hash_t) * 8 - JODY_HASH_SHIFT);
+		hash += tail;
+	}
+
+	return hash;
 }
