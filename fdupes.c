@@ -71,6 +71,7 @@
 #define F_SUMMARIZEMATCHES  0x0800
 #define F_EXCLUDEHIDDEN     0x1000
 #define F_PERMISSIONS       0x2000
+#define F_HARDLINKFILES     0x4000
 
 typedef enum {
   ORDER_TIME = 0,
@@ -770,6 +771,90 @@ static void deletefiles(file_t *files, int prompt, FILE *tty)
   free(preservestr);
 }
 
+#ifndef ON_WINDOWS
+void hardlinkfiles(file_t *files, int debug)
+{
+  int counter;
+  int groups = 0;
+  int curgroup = 0;
+  file_t *tmpfile;
+  file_t *curfile;
+  file_t **dupelist;
+  int max = 0;
+  int x = 0;
+
+  curfile = files;
+
+  while (curfile) {
+    if (curfile->hasdupes) {
+      counter = 1;
+      groups++;
+
+      tmpfile = curfile->duplicates;
+      while (tmpfile) {
+        counter++;
+        tmpfile = tmpfile->duplicates;
+      }
+
+      if (counter > max) max = counter;
+    }
+
+    curfile = curfile->next;
+  }
+
+  max++;
+
+  dupelist = (file_t**) malloc(sizeof(file_t*) * max);
+
+  if (!dupelist) {
+    errormsg("out of memory\n");
+    exit(1);
+  }
+
+  while (files) {
+    if (files->hasdupes) {
+      curgroup++;
+      counter = 1;
+      dupelist[counter] = files;
+
+      if (debug) printf("[%d] %s\n", counter, files->d_name);
+
+      tmpfile = files->duplicates;
+
+      while (tmpfile) {
+        dupelist[++counter] = tmpfile;
+        if (debug) printf("[%d] %s\n", counter, tmpfile->d_name);
+        tmpfile = tmpfile->duplicates;
+      }
+
+      if (debug) printf("\n");
+
+      /* preserve only the first file */
+
+      printf("   [+] %s\n", dupelist[1]->d_name);
+      for (x = 2; x <= counter; x++) {
+          if (unlink(dupelist[x]->d_name) == 0) {
+            if ( link(dupelist[1]->d_name, dupelist[x]->d_name) == 0 ) {
+                printf("   [h] %s\n", dupelist[x]->d_name);
+            } else {
+                printf("-- unable to create a hardlink for the file: %s\n", strerror(errno));
+                printf("   [!] %s ", dupelist[x]->d_name);
+            }
+          } else {
+            printf("   [!] %s ", dupelist[x]->d_name);
+            printf("-- unable to delete the file!\n");
+          }
+        }
+      printf("\n");
+    }
+
+    files = files->next;
+  }
+
+  free(dupelist);
+}
+#endif
+
 static inline int sort_pairs_by_arrival(file_t *f1, file_t *f2)
 {
   if (f2->duplicates != 0) return 1;
@@ -856,6 +941,10 @@ static void help_text()
   printf("                  \tparticular directory more than once; refer to the\n");
   printf("                  \tfdupes documentation for additional information\n");
   /*printf(" -l --relink      \t(description)\n");*/
+#ifndef ON_WINDOWS
+  printf(" -L --linkhard    \thardlink duplicate files to the first file in\n");
+  printf("                  \teach set of duplicates without prompting the user\n");
+#endif
   printf(" -N --noprompt    \ttogether with --delete, preserve the first file in\n");
   printf("                  \teach set of duplicates and delete the rest without\n");
   printf("                  \tprompting the user\n");
@@ -904,6 +993,9 @@ int main(int argc, char **argv) {
     { "hardlinks", 0, 0, 'H' },
 #endif
     { "relink", 0, 0, 'l' },
+#ifndef ON_WINDOWS
+    { "linkhard", 0, 0, 'L' },
+#endif
     { "noempty", 0, 0, 'n' },
     { "nohidden", 0, 0, 'A' },
     { "delete", 0, 0, 'd' },
@@ -925,7 +1017,7 @@ int main(int argc, char **argv) {
 
   oldargv = cloneargs(argc, argv);
 
-  while ((opt = GETOPT(argc, argv, "frRq1SsHlndvhNmpo:"
+  while ((opt = GETOPT(argc, argv, "frRq1SsHlLndvhNmpo:"
 #ifndef OMIT_GETOPT_LONG
           , long_options, NULL
 #endif
@@ -968,6 +1060,11 @@ int main(int argc, char **argv) {
     case 'd':
       SETFLAG(flags, F_DELETEFILES);
       break;
+#ifndef ON_WINDOWS
+    case 'L':
+      SETFLAG(flags, F_HARDLINKFILES);
+      break;
+#endif
     case 'v':
       printf("fdupes %s\n", VERSION);
       exit(0);
@@ -1012,6 +1109,16 @@ int main(int argc, char **argv) {
 
   if (ISFLAG(flags, F_SUMMARIZEMATCHES) && ISFLAG(flags, F_DELETEFILES)) {
     errormsg("options --summarize and --delete are not compatible\n");
+    exit(1);
+  }
+
+  if (ISFLAG(flags, F_HARDLINKFILES) && ISFLAG(flags, F_DELETEFILES)) {
+    errormsg("options --linkhard and --delete are not compatible\n");
+    exit(1);
+  }
+
+  if (ISFLAG(flags, F_HARDLINKFILES) && ISFLAG(flags, F_CONSIDERHARDLINKS)) {
+    errormsg("options --linkhard and --hardlinks are not compatible\n");
     exit(1);
   }
 
@@ -1093,6 +1200,8 @@ int main(int argc, char **argv) {
   if (ISFLAG(flags, F_DELETEFILES)) {
     if (ISFLAG(flags, F_NOPROMPT)) deletefiles(files, 0, 0);
     else deletefiles(files, 1, stdin);
+  } else if (ISFLAG(flags, F_HARDLINKFILES)) {
+    hardlinkfiles(files, 0);
   } else {
     if (ISFLAG(flags, F_SUMMARIZEMATCHES)) summarizematches(files);
     else printmatches(files);
