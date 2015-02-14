@@ -1216,6 +1216,7 @@ int main(int argc, char **argv) {
     if (ISFLAG(flags, F_NOPROMPT)) deletefiles(files, 0, 0);
     else deletefiles(files, 1, stdin);
   } else if (ISFLAG(flags, F_HARDLINKFILES)) {
+    if (ISFLAG(flags, F_SUMMARIZEMATCHES)) summarizematches(files);
     hardlinkfiles(files, 0);
   } else {
     if (ISFLAG(flags, F_SUMMARIZEMATCHES)) summarizematches(files);
