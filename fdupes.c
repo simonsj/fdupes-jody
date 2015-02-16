@@ -612,7 +612,7 @@ static void printmatches(file_t *files)
   while (files != NULL) {
     if (files->hasdupes) {
       if (!ISFLAG(flags, F_OMITFIRST)) {
-	if (ISFLAG(flags, F_SHOWSIZE)) printf("%jd byte%c each:\n", (intmax_t)files->size,
+	if (ISFLAG(flags, F_SHOWSIZE)) printf("%jd byte%c each: ", (intmax_t)files->size,
 	 (files->size != 1) ? 's' : ' ');
 	if (ISFLAG(flags, F_DSAMELINE)) escapefilename("\\ ", &files->d_name);
 	printf("%s%c", files->d_name, ISFLAG(flags, F_DSAMELINE)?' ':'\n');
