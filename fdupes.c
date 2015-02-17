@@ -611,9 +611,26 @@ static void printmatches(file_t *files)
 
   while (files != NULL) {
     if (files->hasdupes) {
+
+      /* compute how many bytes are unnecessary */
+      int numfiles = 0;
+      double numbytes = 0.0f;
+      {
+        file_t *t = files->duplicates;
+        while (t != NULL) {
+          numfiles += 1;
+          numbytes += t->size;
+          t = t->duplicates;
+        }
+      }
+
+
       if (!ISFLAG(flags, F_OMITFIRST)) {
-	if (ISFLAG(flags, F_SHOWSIZE)) printf("%jd byte%c each: ", (intmax_t)files->size,
-	 (files->size != 1) ? 's' : ' ');
+	if (ISFLAG(flags, F_SHOWSIZE)) printf("%jd bytes each %jd bytes wasted %jd extra files: %s ",
+         (intmax_t)files->size,
+         (intmax_t)numbytes,
+         (intmax_t)numfiles,
+         basename(strdup(files->d_name)));
 	if (ISFLAG(flags, F_DSAMELINE)) escapefilename("\\ ", &files->d_name);
 	printf("%s%c", files->d_name, ISFLAG(flags, F_DSAMELINE)?' ':'\n');
       }
