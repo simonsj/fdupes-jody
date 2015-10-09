@@ -47,8 +47,6 @@
   testdir/symlink_two
   testdir/twice_one
 
-- Don't assume that stat always works.
-
 - Option -R should not have to be separated from the rest,
   such that "fdupes -dR testdir", "fdupes -d -R testdir",
   "fdupes -Rd testdir", etc., all yield the same results.
@@ -59,5 +57,27 @@
 
 - Consider option to match only to files in specific directory.
 
-- Do a little commenting, to avoid rolling eyes and/or snickering.
+- Add a way to store stat() info + inital and full hashes for
+  explicit loading in future runs to speed up repeated calls to
+  the program.
 
+- Add an option to exclude files in the same directory from being
+  matched. This should be extensible so that various exclusion
+  criteria can be added later.
+  - Also add code to make directory ordering of pair matching more
+    stable; for instance, if dirs 'foo' and 'bar' are specified,
+    always put 'foo' at the start of the dupe set (which makes it
+    take precedence over 'bar' in this example.)
+
+- The way that duplicates are sorted does not seem to work properly. The
+  sorting needs to be separated into its own function that sorts fully.
+  As it stands, sorting is only correct on specific match pairs and is
+  sometimes overridden by other match pairs to mess up the sort.
+
+- The --xsize option can be improved. Instead of simply specifying an
+  exclusion size minimum, the option should offer multiple ways to
+  specify allowed file sizes. Examples:
+  - '--xsize=-1M' only examine files 1 MB or less
+  - '--xsize=+3M' only examine files 3 MB or greater
+  - '--xsize=512-1024' only examine files between 512 and 1024 bytes
+  - '--xsize=1M-3M,+20M' examine files 1-3 MB and >20 MB in size

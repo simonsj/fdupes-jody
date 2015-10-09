@@ -3,8 +3,78 @@ to fdupes. Every item on the list includes, inside square brackets,
 a list of indentifiers referring to the people who contributed
 that particular item. When more than one person is listed the person
 who contributed the patch or idea appears first, followed by
-those who've otherwise worked on that item. For a list of 
+those who've otherwise worked on that item. For a list of
 contributors names and identifiers please see the CONTRIBUTORS file.
+
+Changes from 2.0 to 2.0.1 [JLB]
+
+- Hard links were treated as identical in match checking but not in
+  match confirmation. This version fixes the problem, increasing speed
+  with file sets involving lots of hard links.
+- A few minor efficiency improvements were performed
+
+Changes from 1.51-jody5 to 2.0 [JLB]
+
+- Bumped major version to 2.0 due to the number of behavioral changes
+  and improvements to the code, plus it looks less messy than the
+  hyphenated versioning
+- Increased "chunk size" for better performance and to solve the disk
+  thrashing problem when checking two large files for a match
+- When using the -H option, hard links now automatically match each
+  other without performing any file reads
+- Changed primary memory allocator to string_alloc by Jody Bruchon
+  to improve performance over generic malloc/calloc
+- Progress indicator now lists the number of duplicate pairs found in
+  addition to the usual file progress count and completion percentage
+- Progress is updated more rapidly when full file comparisons happen
+  so users are less likely to think fdupes is "frozen"
+- Floating point code was made optional and is removed by default
+- A comparison script was added to check built fdupes behavior against
+  whatever fdupes is currently installed on the system
+- Added "undocumented" -Q / --quick option which is not fully safe but can
+  be used to drastically reduce run time for large data sets if some risk
+  of data loss is acceptable to the user
+- Added -O/--paramorder option to sort files by the order their parent
+  directory set was specified on the command line first. This makes it
+  possible to choose what directories' files get preserved over others
+  while using -d and -N together
+- The file list loading progress indicator was revamped. Rather than a
+  simple "spinning pipe" indicator, it now shows the number of files and
+  directories scanned as well as which command line specified set the
+  scanning is currently happening in
+- fdupes was enhanced to support more than 2 million files total by
+  changing from 'int' internal sizes to the maximum supported by the
+  platform being compiled for
+- Hard link code was modified to be much safer; now any file is only
+  permanently deleted after a hard link succeeds
+- Hard links on Windows (on supporting filesystems) are now supported
+- Hashing code was optimized for a benchmarked 8.4% improvement in file
+  processing overhead (and much more under typical real-world conditions)
+- Hard linking checks for more error conditions and output is much
+  clearer about what action was taken on any given file
+
+Changes from 1.51-jody4-jkl1 to 1.51-jody5 [JLB]
+
+- Less malloc()s so less memory usage and a slight speedup
+- Change --order=name to an intelligent numerically correct sort
+- Fixed bug where progress text was missing until first update
+- Performance boost for small files (4KB or less) by not running
+  redundant hashes and comparisons
+- Test files added for numerically correct sort ordering
+
+Changes from 1.51-jody4 to 1.51-jody4-jkl1 [JKL]
+
+- added `--xsize=SIZE' option: exclude files of size < SIZE
+- updated Makefile: `PREFIX = /usr/local'
+- updated README: Usage to reflect curent parameters
+
+Changes from 1.51-jody2 to 1.51-jody4 [JLB]
+
+- Add support for hard linking duplicates with -L switch
+- Updated jody_hash algorithm with much lower collision rate
+- Remove freopen() call that posed a portability problem
+- Improved progress indicator behavior
+- Many minor bug fixes
 
 Changes from 1.51 to 1.51-jody2 [JLB]
 
@@ -50,7 +120,7 @@ Changes from 1.40 to 1.50-PR2
 
 Changes from 1.31 to 1.40
 
-- Added option to omit the first file in each group 
+- Added option to omit the first file in each group
   of matches. [LM, AL]
 - Added escaping of filenames containing spaces when
   sameline option is specified. [AL]
@@ -62,7 +132,7 @@ Changes from 1.31 to 1.40
 Changes from 1.30 to 1.31
 
 - Added interactive option to preserve all files during
-  delete procedure (something similar was already in 
+  delete procedure (something similar was already in
   place, but now it's official). [AL]
 - Updated delete procedure prompt format. [AL]
 - Cosmetic code changes. [AL]
@@ -84,7 +154,7 @@ Changes from 1.12 to 1.20
   scanned were named pipes or sockets. [FD]
 - Fix against security risk resulting from the use of a
   temporary file to store md5sum output. [FD, AL]
-- Using an external md5sum program is now optional. Started 
+- Using an external md5sum program is now optional. Started
   using L. Peter Deutsh's MD5 library instead. [FD, AL]
 - Added hardlinks option to distinguish between hard links
   and actual duplicate files. [FD, AL]
@@ -93,7 +163,7 @@ Changes from 1.12 to 1.20
 
 Changes from 1.11 to 1.12
 
-- Improved handling of extremely long input on preserve 
+- Improved handling of extremely long input on preserve
   prompt (delete option). [SSD, AL]
 
 Changes from 1.1 to 1.11
